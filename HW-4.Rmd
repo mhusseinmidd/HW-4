@@ -10,6 +10,8 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(pander))
+
 # For US county and state maps
 suppressPackageStartupMessages(library(maps))
 # For loading in shapefiles
@@ -17,6 +19,7 @@ suppressPackageStartupMessages(library(rgdal))
 suppressPackageStartupMessages(library(maptools))
 # For interactive maps
 suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(stringr))
 ```
 
 ## Admistrative:
@@ -34,7 +37,7 @@ Please indicate
 
 ## Question 1:
 
-```{r, cache=TRUE, echo=FALSE}
+```{r, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
 # Load state and county map of US in 2010 from the maps package and convert them
 # to data frames so that we can ggplot them.
 US_state <- map_data("state") %>% 
@@ -55,61 +58,137 @@ Gore, and Ralph Nader. Your write-up must include:
     * Counties are filled with red when they tend to favor Bush
     * Counties are filled with white when they tend to be split
     * Counties are filled with blue when they tend to favor Gore and Nader
-2. An answer to the following question: which states exhibit the greatest
-**within state heterogeneity** in voting? Come up with a mathematical
-justification.
+
+```{r, fig.width=12, fig.height=6, message=FALSE, warning=FALSE, echo=FALSE, cache=TRUE}
+# Load state and county map of US in 2010 from the maps package and convert them
+# to data frames so that we can ggplot them.
+elections <- read.csv("COUNTY.csv") %>%  tbl_df()
 
 
-### Hints
+#First, combine Gore and Nader: 
+library(plyr)
+elections <- 
+  elections %>%  
+  mutate (PNADER=
+            revalue(PNADER, c("."="0")
+                    ), 
+          PDEMOCRAT=
+            as.numeric(as.character(PGORE))+
+            as.numeric(as.character(PNADER)),
+           
+        #Miami has to name. Change: The hyphen is not working :/ 
+          COUNTY=
+            revalue (COUNTY, c("dade"="miami-dade"))
+          ) 
 
-* Consider `scale_fill_gradient2(name="", low="blue", high="red", mid="white")` 
-for the appropriate "mid" point.  See the ggplot2 webpage for [this
-command](http://docs.ggplot2.org/0.9.3.1/scale_gradient2.html) for inspiration.
-* I believe the county map is from 2010, whereas the election data is from 2000,
-as such certain counties will not match up. The number is not that large.
-* [Counties in
-Virginia](http://en.wikipedia.org/wiki/List_of_counties_in_Virginia)
+detach(package:plyr)    #Learnt this the hard way (2 hrs of group_by debugging)
 
-
-### Code Hints
-
-This function eliminates all non-alphanumeric characters and spaces and converts
-all text to lower case:
-
-```{r}
+#Next, mere on ELECTIONS geographic information: 
 clean_text <- function(text){
   text <- gsub("[^[:alnum:]]", "", text)
   text <- gsub(" ", "", text)
   text <- tolower(text)
   return(text)
 }
-clean_text("HeLLO wOrLd.")
-```
 
-For the following `ggplot`, see how I didn't define `data` nor any `aes`thetics
-in the base `ggplot`, but only within the respective `geom`'s. This is a nice
-trick that allows you to have different `data` and different `aes` apply to
-different `geom`'s; in this case state-level vs county-level data.
+elections <-
+  elections %>%
+  mutate (STATE=clean_text(STATE), 
+          COUNTY=clean_text(COUNTY)
+  ) 
 
-```{r}
+#Some states and counties have spaces between their names. Remove the spaces: 
+US_county <- 
+  US_county %>% 
+  mutate (region=str_replace(region, " ", ""),
+          #Some regions have more than one space: e.g. San Luis Obispo. Use _all: 
+          subregion=str_replace_all(subregion, " ", "")
+          )
+
+#Create a dataframe with election and geog information: 
+elections_geo <- 
+  inner_join(elections, US_county, by=c("STATE"="region", "COUNTY"="subregion")) 
+
 ggplot(data=NULL) +
-  geom_polygon(data=US_county, aes(x=long, y=lat, group=group, fill=1)) +
+  geom_polygon(data=US_county, aes(x=long, y=lat, group=group)) +
+  geom_polygon(data=elections_geo, aes(x=long, y=lat, group=group, fill=PDEMOCRAT))+
   geom_path(data=US_county, aes(x=long, y=lat, group=group), col="black", size=0.05) +
-  geom_path(data=US_state, aes(x=long, y=lat, group=group), col="black", size=0.1) +
-  coord_map()
+  geom_path(data=US_state, aes(x=long, y=lat, group=group), col="black", size=0.25) +
+  scale_fill_gradient2(midpoint=0.5, low=("Red"), high=("blue"), mid=("white"))+
+  coord_map() 
+```
+The above choropleth map of the United States shows the proportion of votes in favor of Gore or Nader in a given county. The larger the percentage, the more blue the color, whereas the lower the percentage the more red the county becomes. White indicates a 50:50 split or values close to it. Overall, we see that the rooky mountains region is considerably dominated by votes to Bush, whereas the extremes of the westcoast and most of New England favored Al Gore or Ralph Nader. The Midwest appears to be split, so does Southern California and Arizona.  
+
+2. An answer to the following question: which states exhibit the greatest
+**within state heterogeneity** in voting? Come up with a mathematical
+justification.
+
+To measure heterogeneity in voting within states, we borrow a concept engineered by economists and adapted by political scientists: The Ethno-Linguistic Fractionalization. Long story short, how ethnically diverse (i.e. heterogenous) a country is matters (civil wars, difficulties in reaching consensus ...etc). What the ELF index does is quantify the likelihood that two people chosen at random will have different ethnic backgrounds. How does it do that? Through Herfindahl's concentration index. 
+
+For our purposes, we want to measure the likelihood that two people chosen at random will vote for a different presidential candidate in a given state. The higher this index, the more heterogenous the state is likely to be. Let's call our index PADI: Political Affiliation Diversity Index. 
+
+It will be calculated as: 1-$sum(S^2_i, i=1, n)$, where $S_i$ is the proportion of voters who belong to group $i$, which takes the values of Bush, Gore, and Nader in our simplified calculation. Notice that in political science, there is a tendency to exponentiate the index to $-1$, thereby creating an index that takes on values $1, ..., n$. However, I find that this complicates the interpretation unnecessarily. 
+
+```{r, fig.width=12, fig.height=6, message = FALSE, warning = FALSE, echo=FALSE}
+PADI <- 
+  elections %>%
+  group_by(STATE, COUNTY) %>% 
+#Avoid redundant information: 
+  slice (1) %>% 
+  ungroup () %>%  
+#Need to change type of variable to numeric: 
+  mutate (BUSH=as.numeric(as.character(BUSH)), 
+          NADER=as.numeric(as.character(NADER)), 
+          GORE=as.numeric(as.character(GORE)),
+#Clean all NAs otherwise calculations break down later on: 
+          BUSH=ifelse (is.na(BUSH), 0, BUSH), 
+          NADER=ifelse(is.na(NADER), 0, NADER), 
+          GORE=ifelse(is.na(GORE), 0, GORE),
+#Sum voters within each county (we ignore those who voted for other candidates for now. Although there is no reason not to expand the analysis after writing a function that does these tedious calculations)
+          total_votes= BUSH+NADER+GORE
+          ) %>% 
+  group_by(STATE) %>%  
+# Sum total number of voters per state. Also, no. voters per candidate:  
+  mutate (total_votes_state=sum(total_votes), 
+          total_votes_BUSH=sum(BUSH), 
+          total_votes_NADER=sum(NADER), 
+          total_votes_GORE=sum(GORE),
+#Calculate the squared prop. for the index: 
+          share_votes_BUSH_sq=(total_votes_BUSH/total_votes_state)^2, 
+          share_votes_NADER_sq=(total_votes_NADER/total_votes_state)^2,
+          share_votes_GORE_sq=(total_votes_GORE/total_votes_state)^2, 
+#Put it all together: 
+          PADI=1-(share_votes_BUSH_sq+share_votes_NADER_sq+share_votes_GORE_sq)
+         ) %>% 
+#One per state is enough
+  slice (1) %>% 
+  ungroup()
+
+PADI_10 <- 
+  PADI %>% 
+  arrange (desc(PADI)) %>% 
+  slice (1:10) %>%  
+  select (STATE, PADI)
+
+pander(PADI_10)
 ```
 
+According to our measure, Vermont is the the state with most diversity in political voting in the 2000 presidential elections. While this may come as a surprise, it is consistent with the facts. Bush and Gore's results were very similar (120,000 vs. 150,000) and Nader had substantially support (20,000) given the State's overall voters who were 290,000. Since the split is more equal compared to other states, the probability of selecting two individuals at random with different opinions (i.e. the value of our index) increases. This becomes clearer when contrasted with the least politically heterogenous state: Wyoming. The breakdown in this state between the candidates was approximately 148,000 for Bush, 4,600 for Nader, and 60,000 for Gore. Thus, the likelihood of selecting two people at random with different presidential candidate preferences is very low, since the results are dominated by votes for Bush. That is why Wyoming scores very low on PADI. 
 
-### Write-Up
+Having Hawaii on the top ten heterogenous states highlights a draw back of this tool: It does not weigh the total population of the state in question. This would not be a problem, except that we only have information on 80 voters from Hawaii. Whether this information is useful in determining the political heterogeneity of Hawaii or not is left for the reader to decide. While the PADI is far from perfect, its advantages are two fold: First, it is relatively simple to compute from both micro and macro data. Second, it has a rather intuitive interpretation. Another way of displaying the political heterogenity of states is on a map: 
+```{r, fig.width=12, fig.height=6, message = FALSE, cache =FALSE, warning = FALSE, echo=FALSE}
+#Let's try to make a map of the PADI values: 
+US_state <- 
+  US_state %>% 
+  mutate (region=str_replace(region, " ", ""))
 
-```{r, fig.width=12, fig.height=6}
-
+PADI_geo <- left_join(US_state, PADI, by=c("region"="STATE")) 
+ggplot(data=NULL) +
+  geom_polygon(data=PADI_geo, aes(x=long, y=lat, group=group, fill=PADI))+
+  geom_path(data=US_state, aes(x=long, y=lat, group=group),
+            col="black", size=0.2) +
+  coord_map() 
 ```
-
-
-
-
-
 
 ## Question 2:
 
@@ -127,9 +206,7 @@ Use [Social Explorer](http://www.socialexplorer.com/) to get census data. I did
 a demo of this in class. If you don't remember how or are stuck, please speak to
 me or get help from your peers. Do not submit copies of the same file.
 
-There should be some mechanism in your Shiny app that allows one the user to toggle
-between the different ethnic groups.
-
+There should be some mechanism in your Shiny app that allows one the user to toggle between the different ethnic groups.
 
 ### Loading Shapefile Data
 
