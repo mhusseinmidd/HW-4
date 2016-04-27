@@ -26,13 +26,10 @@ suppressPackageStartupMessages(library(stringr))
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW:
-* What gave you the most trouble:
+* Who you collaborated with: Andrew Holtz
+* Roughly how much time you spent on this HW: 9 hours
+* What gave you the most trouble:shiny 
 * Any comments you have: 
-
-
-
 
 
 ## Question 1:
@@ -127,7 +124,7 @@ To measure heterogeneity in voting within states, we borrow a concept engineered
 
 For our purposes, we want to measure the likelihood that two people chosen at random will vote for a different presidential candidate in a given state. The higher this index, the more heterogenous the state is likely to be. Let's call our index PADI: Political Affiliation Diversity Index. 
 
-It will be calculated as: 1-$sum(S^2_i, i=1, n)$, where $S_i$ is the proportion of voters who belong to group $i$, which takes the values of Bush, Gore, and Nader in our simplified calculation. Notice that in political science, there is a tendency to exponentiate the index to $-1$, thereby creating an index that takes on values $1, ..., n$. However, I find that this complicates the interpretation unnecessarily. 
+It will be calculated as: 1-$sum(S^2_i, i=1, n)$, where $S_i$ is the proportion of voters who belong to group $i$, which takes the values of Bush, Gore, and Nader in our simplified calculation. Notice that in political science, there is a tendency to exponentiate the index to $-1$, thereby creating an index that takes on values $1, ..., n$. However, I find that this complicates the interpretation unnecessarily. It is worth mentioning that squaring the terms allows us to end with a range that extends from $1/N$ to $1$, which makes the expected range intuitive. 
 
 ```{r, fig.width=12, fig.height=6, message = FALSE, warning = FALSE, echo=FALSE}
 PADI <- 
@@ -211,8 +208,7 @@ There should be some mechanism in your Shiny app that allows one the user to tog
 ### Loading Shapefile Data
 
 Here is some starter code:
-
-```{r}
+```{r, echo=FALSE}
 shapefile_name <- paste(getwd(), "/VT_census_tracts/tl_2015_50_tract.shp", sep="")
 VT <- readOGR(shapefile_name, layer = "tl_2015_50_tract", verbose = FALSE)
 leaflet(VT) %>%
@@ -230,5 +226,116 @@ the link to your app.
 Comment on general ethnic demographic trends that's more substantive than just
 "Vermont is really white."
 
+```{r, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
+# Load state and county map of US in 2010 from the maps package and convert them
+# to data frames so that we can ggplot them.
+R11168411_SL140 <- read.csv("U:/Middlebury/Academics/Spring Term 2016/Introduction to Data Science - MATH 0216/Projects/HW-4/R11168411_SL140.csv") %>% tbl_df()
+```
 
+The first Vermont map shows the proportion of white inidviduals by US Census tract. While it is tempting to think of the beige as tracts with minority white, a cursory glance at the lengend shows that these tracts have upwards of 70% of their inhabitants as white. 
 
+```{r, warning=FALSE, message=FALSE, echo=FALSE, cashe=TRUE}
+race <- 
+  R11168411_SL140 %>% 
+  rename (total_population=SE_T054_001, 
+          white=SE_T054_002, 
+          black=SE_T054_003, 
+          native=SE_T054_004, 
+          asian=SE_T054_005, 
+          island=SE_T054_006, 
+          other=SE_T054_007, 
+          hispanic=SE_T055_010
+          ) %>%  
+  mutate (prop_white=white/total_population, 
+          prop_black=black/total_population, 
+          prop_native=native/total_population, 
+          prop_asian=asian/total_population, 
+          prop_island=island/total_population, 
+          prop_asiani=prop_asian+prop_island,
+          prop_other=other/total_population, 
+          prop_other=prop_other+prop_island+prop_native, 
+          prop_hispanic=hispanic/total_population)
+
+shapefile_name <- paste(getwd(), "/VT_census_tracts/tl_2015_50_tract.shp", sep="")
+VT <- readOGR(shapefile_name, layer = "tl_2015_50_tract", verbose = FALSE)
+
+leaflet(VT) %>%
+  addTiles() %>% 
+  addPolylines(color="black", weight=1) %>%  
+  addPolygons(
+    stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+    color = ~colorQuantile("Reds", race$prop_white)(race$prop_white)
+  ) %>%
+  addLegend("topright", values = ~race$prop_white,
+            title = "Proportion of White",
+            labels = palette(),
+            opacity = 1,
+            pal=colorNumeric('Reds', race$prop_white)
+  ) 
+```
+
+The second map shows the proportion of blacks by census tract. Visually, the pattern seem to be switched. That is, tracts that contain lower proportion of whites seem to contain higher proportion of blacks. This pattern is repeated by all other minorities, suggesting that minorities tend to live in the vacinity of one another, as opposed to desperse between different neighbourhoods.  
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, cashe=TRUE}
+#Andrew H. showed me how to add the na.color: 
+  leaflet(VT) %>%
+  addTiles() %>% 
+  addPolylines(color="black", weight=1) %>%  
+  addPolygons(
+    stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+    color = ~colorQuantile("Blues", race$prop_black, na.color="grey")(race$prop_black)
+  ) %>%
+  addLegend("topright", values = ~race$prop_black,
+            title = "Proportion of Black",
+            labels = palette(),
+            opacity = 1,
+            pal=colorNumeric('Blues', race$prop_black)
+  )
+```
+ 
+```{r, warning=FALSE, message=FALSE, echo=FALSE, cashe=TRUE}
+
+  leaflet(VT) %>%
+  addTiles() %>% 
+  addPolylines(color="black", weight=1) %>%  
+  addPolygons(
+    stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+    color = ~colorQuantile("Greens", race$prop_asiani)(race$prop_asiani)
+  ) %>%
+  addLegend("topright", values = ~race$prop_asiani,
+            title = "Proportion of Asian",
+            labels = palette(),
+            opacity = 1,
+            pal=colorNumeric('Greens', race$prop_asiani)
+  )
+```
+```{r, warning=FALSE, message=FALSE, echo=FALSE, cashe=TRUE}
+   leaflet(VT) %>%
+  addTiles() %>% 
+  addPolylines(color="black", weight=1) %>%  
+  addPolygons(
+    stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+    color = ~colorQuantile("Blues", race$prop_hispanic)(race$prop_hispanic)
+  ) %>%
+  addLegend("topright", values = ~race$prop_hispanic,
+            title = "Proportion of Hispanics",
+            labels = palette(),
+            opacity = 1,
+            pal=colorNumeric('Blues', race$prop_hispanic)
+  )
+```
+```{r, warning=FALSE, message=FALSE, echo=FALSE, cashe=TRUE}
+ leaflet(VT) %>%
+  addTiles() %>% 
+  addPolylines(color="black", weight=1) %>%  
+  addPolygons(
+    stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5,
+    color = ~colorQuantile("Reds", race$prop_other)(race$prop_other)
+  ) %>%
+  addLegend("topright", values = ~race$prop_other,
+            title = "Proportion of Other",
+            labels = palette(),
+            opacity = 1,
+            pal=colorNumeric('Reds', race$prop_other)
+  )
+```
