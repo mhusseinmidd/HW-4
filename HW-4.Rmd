@@ -229,7 +229,7 @@ Comment on general ethnic demographic trends that's more substantive than just
 ```{r, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
 # Load state and county map of US in 2010 from the maps package and convert them
 # to data frames so that we can ggplot them.
-R11168411_SL140 <- read.csv("U:/Middlebury/Academics/Spring Term 2016/Introduction to Data Science - MATH 0216/Projects/HW-4/R11168411_SL140.csv") %>% tbl_df()
+R11168411_SL140 <- read.csv("Data/R11168411_SL140.csv") %>% tbl_df()
 ```
 
 The first Vermont map shows the proportion of white inidviduals by US Census tract. While it is tempting to think of the beige as tracts with minority white, a cursory glance at the lengend shows that these tracts have upwards of 70% of their inhabitants as white. 
